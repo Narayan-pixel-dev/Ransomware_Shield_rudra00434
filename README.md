@@ -213,4 +213,3 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Contact email : tatairudra39@gmail.com .
 
-<p align="center">Built with Django </p>
