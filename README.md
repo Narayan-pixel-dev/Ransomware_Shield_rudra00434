@@ -208,5 +208,6 @@ Visit `http://localhost:5173` in your browser.
 
 ## 📄 License
 Distributed under the MIT License. See `LICENSE` for more information.
-
-<p align="center">Built with ❤️ for Cyber Defense</p>
+Developed by Rudranil Goswami 
+Contact email : tatairudra39@gmail.com
+<p align="center">Built with Django </p>
