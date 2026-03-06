@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://placehold.co/150x150/000000/FFFFFF.png?text=Ransomware+Shield" alt="Logo" width="150" height="150">
+  <img width="812" height="812" alt="image" src="https://github.com/user-attachments/assets/adc26974-b1c6-44b1-ad14-e910ba6c9ab8" />
   <h1 align="center">Ransomware Shield</h1>
   <p align="center">
     An AI-Powered, Real-Time Ransomware Detection and Mitigation Platform.
@@ -208,6 +208,9 @@ Visit `http://localhost:5173` in your browser.
 
 ## 📄 License
 Distributed under the MIT License. See `LICENSE` for more information.
-Developed by Rudranil Goswami 
-Contact email : tatairudra39@gmail.com
+
+## Developed by Rudranil Goswami.
+
+## Contact email : tatairudra39@gmail.com .
+
 <p align="center">Built with Django </p>
