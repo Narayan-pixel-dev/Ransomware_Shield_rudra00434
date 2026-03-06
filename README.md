@@ -62,17 +62,17 @@ Real-time endpoint telemtry monitoring.
 
 | Dashboard Overview | Live Network Analysis |
 | :---: | :---: |
-| ![Dashboard Setup](https://github.com/user-attachments/assets/1a9fd176-68b7-4b60-9118-6e1d51fef46b) | ![Network Config](https://github.com/user-attachments/assets/de9d7dc5-eece-4389-9b57-d2eab098cc03) |
+| ![Dashboard Setup](https://github.com/user-attachments/assets/1a9fd176-68b7-4b60-9118-6e1d51fef46b) | ![Network Config](https://github.com/user-attachments/assets/3a5d258e-e4a9-4922-ae44-71b3b75777dd) |
 | *High-level overview of threat scores and recent scans.* | *Real-time connection monitoring.* |
 
 | AI Threat Explainer | Live MitM ARP Alerts |
 | :---: | :---: |
-| ![AI Explainer](https://github.com/user-attachments/assets/05b18aa6-a511-4475-bd7f-712803b9b47e) | ![MitM ARP Spoofing Detection](https://github.com/user-attachments/assets/c528afab-58dd-4185-9a67-0c677610b784) |
+| ![AI Explainer](https://github.com/user-attachments/assets/63107bb4-94a7-4777-9cb7-ed757eb3453d) | ![MitM ARP Spoofing Detection](https://github.com/user-attachments/assets/518fdac8-99b4-422d-8247-b70cca9df54e) |
 | *Llama 3 functioning as a conversational security analyst.* | *Global warning for active Man-in-the-Middle attacks.* |
 
 | Advanced Scanner Engine | Post-Scan PDF Reports |
 | :---: | :---: |
-| ![Scanner Interface](https://github.com/user-attachments/assets/a134dddf-1b15-4a52-9f6f-2fb86c761c74) | ![PDF Report](https://placehold.co/500x300/101827/FFFFFF.png?text=Generated+PDF+Report) |
+| ![Scanner Interface](https://github.com/user-attachments/assets/189fc160-9b6c-4c0a-99d3-1f30acd154e7) | ![PDF Report](https://github.com/user-attachments/assets/f2630669-60e2-4f0d-9f8a-d9018af5544d) |
 | *Upload mechanism for triggering the Static Analyzer and YARA logic.* | *Detailed downloadable reports featuring AI severity explanations.* |
 
 *(Replace the placeholder URLs above with actual screenshots of the application)*
