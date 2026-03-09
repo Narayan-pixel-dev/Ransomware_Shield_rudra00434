@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 
+
 class ScanJob(models.Model):
     STATUS_CHOICES = [
         ('PENDING', 'Pending'),
@@ -11,7 +12,8 @@ class ScanJob(models.Model):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True)
     file_name = models.CharField(max_length=255)
-    file_hash = models.CharField(max_length=64, db_index=True) # SHA256
+    file_hash = models.CharField(max_length=128, db_index=True)  # Primary hash (BLAKE3)
+    sha256_hash = models.CharField(max_length=64, db_index=True, default='')  # SHA-256 for VT
     file_size = models.BigIntegerField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -19,6 +21,7 @@ class ScanJob(models.Model):
 
     def __str__(self):
         return f"{self.file_name} ({self.status})"
+
 
 class ScanResult(models.Model):
     LEVEL_CHOICES = [
@@ -31,13 +34,14 @@ class ScanResult(models.Model):
 
     job = models.OneToOneField(ScanJob, on_delete=models.CASCADE, related_name='result')
     threat_level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='CLEAN')
-    detection_count = models.IntegerField(default=0)
+    detection_count = models.IntegerField(default=0)  # Now stored as percentage (0-100)
     engine_results = models.JSONField(default=dict)
     ml_confidence_score = models.FloatField(default=0.0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"Result for {self.job.file_name} - {self.threat_level}"
+
 
 class ThreatReport(models.Model):
     result = models.OneToOneField(ScanResult, on_delete=models.CASCADE, related_name='report')

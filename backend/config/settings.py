@@ -98,14 +98,8 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],
-        },
-    },
-}
+# Max upload size: 100MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600
 
 
 # Database
@@ -205,4 +199,30 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# Added to trigger auto-reload
+# Logging Configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] {levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'security_audit.log',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'scanner': {'handlers': ['console', 'file'], 'level': 'INFO'},
+        'ai_engine': {'handlers': ['console', 'file'], 'level': 'INFO'},
+        'alerts': {'handlers': ['console', 'file'], 'level': 'WARNING'},
+    },
+}

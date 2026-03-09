@@ -1,27 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, ShieldAlert, Wifi, Play, Square, Server, WifiOff, AlertTriangle } from 'lucide-react';
+import { Activity, ShieldAlert, Wifi, Play, Square, Server, WifiOff, AlertTriangle, Globe, Shield, Cpu, Users } from 'lucide-react';
+import MarkdownRenderer from '../components/common/MarkdownRenderer';
 
 const NetworkAnalysis = () => {
     const [connections, setConnections] = useState([]);
+    const [stats, setStats] = useState({ total: 0, new_ips: 0, risky_count: 0 });
     const [analysisLog, setAnalysisLog] = useState([]);
     const [isMonitoring, setIsMonitoring] = useState(false);
     const [error, setError] = useState(null);
     const [mitmAlert, setMitmAlert] = useState(null);
+    const [beaconingAlerts, setBeaconingAlerts] = useState([]);
+    const [filter, setFilter] = useState('all'); // 'all', 'risky', 'external'
     const ws = useRef(null);
     const analysisEndRef = useRef(null);
+    const reconnectAttempts = useRef(0);
+    const MAX_RECONNECT_ATTEMPTS = 5;
 
     // Auto-scroll the AI analysis log
     useEffect(() => {
         analysisEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [analysisLog]);
 
-    useEffect(() => {
-        // Initialize WebSocket connection
-        ws.current = new WebSocket('ws://localhost:8000/ws/network-analysis/');
+    const connectWebSocket = () => {
+        const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:8000/ws/network-analysis/`;
+        ws.current = new WebSocket(wsUrl);
 
         ws.current.onopen = () => {
             console.log("WebSocket Connected");
             setError(null);
+            reconnectAttempts.current = 0;
         };
 
         ws.current.onmessage = (event) => {
@@ -29,13 +36,16 @@ const NetworkAnalysis = () => {
 
             if (data.type === 'network_data') {
                 setConnections(data.connections);
+                if (data.stats) setStats(data.stats);
             } else if (data.type === 'ai_analysis') {
-                setAnalysisLog(prev => [...prev, {
+                setAnalysisLog(prev => [...prev.slice(-50), { // Keep last 50 entries
                     time: new Date().toLocaleTimeString(),
                     text: data.analysis
                 }]);
             } else if (data.type === 'mitm_alert') {
                 setMitmAlert(data.alert);
+            } else if (data.type === 'beaconing_alert') {
+                setBeaconingAlerts(data.alerts || []);
             } else if (data.error) {
                 setError(data.error);
                 setIsMonitoring(false);
@@ -44,25 +54,35 @@ const NetworkAnalysis = () => {
             } else if (data.status === 'monitoring_stopped') {
                 setIsMonitoring(false);
                 setConnections([]);
-                setMitmAlert(null); // Clear alerts on stop
+                setMitmAlert(null);
+                setBeaconingAlerts([]);
+                setStats({ total: 0, new_ips: 0, risky_count: 0 });
             }
         };
 
-        ws.current.onerror = (err) => {
-            console.error('WebSocket Error:', err);
-            setError('Lost connection to the analysis server.');
-            setIsMonitoring(false);
+        ws.current.onerror = () => {
+            console.error('WebSocket Error');
         };
 
         ws.current.onclose = () => {
             setIsMonitoring(false);
             console.log("WebSocket Disconnected");
-        };
-
-        return () => {
-            if (ws.current) {
-                ws.current.close();
+            // Auto-reconnect with exponential backoff
+            if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
+                reconnectAttempts.current++;
+                console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current})...`);
+                setTimeout(connectWebSocket, delay);
+            } else {
+                setError('Connection lost. Please refresh the page.');
             }
+        };
+    };
+
+    useEffect(() => {
+        connectWebSocket();
+        return () => {
+            if (ws.current) ws.current.close();
         };
     }, []);
 
@@ -71,20 +91,41 @@ const NetworkAnalysis = () => {
             setError("Cannot connect to server. Ensure the backend is running.");
             return;
         }
-
         if (isMonitoring) {
             ws.current.send(JSON.stringify({ command: 'stop' }));
         } else {
             setError(null);
             setMitmAlert(null);
+            setBeaconingAlerts([]);
             ws.current.send(JSON.stringify({ command: 'start' }));
-            // Add initial log entry
             setAnalysisLog([{
                 time: new Date().toLocaleTimeString(),
-                text: "Initiating live network traffic capture and AI analysis loop..."
+                text: "Initiating live network traffic capture with threat intelligence enrichment..."
             }]);
         }
     };
+
+    const getRiskColor = (score) => {
+        if (score >= 50) return 'text-threat-critical border-threat-critical/30 bg-threat-critical/10';
+        if (score >= 30) return 'text-threat-high border-threat-high/30 bg-threat-high/10';
+        if (score >= 10) return 'text-threat-medium border-threat-medium/30 bg-threat-medium/10';
+        return 'text-threat-clean border-threat-clean/30 bg-threat-clean/10';
+    };
+
+    const getReputationBadge = (rep) => {
+        switch (rep) {
+            case 'malicious': return 'bg-threat-critical/30 text-threat-critical border-threat-critical/50';
+            case 'private': return 'bg-gray-700/50 text-gray-400 border-gray-600';
+            case 'clean': return 'bg-threat-clean/20 text-threat-clean border-threat-clean/30';
+            default: return 'bg-gray-700/50 text-gray-500 border-gray-600';
+        }
+    };
+
+    const filteredConnections = connections.filter(conn => {
+        if (filter === 'risky') return conn.risk_score >= 30;
+        if (filter === 'external') return conn.ip_reputation !== 'private' && conn.remote_address;
+        return true;
+    });
 
     return (
         <div className="max-w-7xl mx-auto p-6 pt-12 pb-24 relative overflow-hidden">
@@ -103,7 +144,7 @@ const NetworkAnalysis = () => {
                     </div>
                     <div>
                         <h1 className="text-3xl font-black tracking-tight drop-shadow-md">Live Network <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">Monitor</span></h1>
-                        <p className="text-gray-400 mt-1 text-lg">Continuous AI analysis of your active system connections.</p>
+                        <p className="text-gray-400 mt-1 text-lg">Real-time threat intelligence with AI-powered analysis.</p>
                     </div>
                 </div>
 
@@ -150,6 +191,33 @@ const NetworkAnalysis = () => {
                 </div>
             </div>
 
+            {/* Live Stats Bar */}
+            {isMonitoring && (
+                <div className="mb-6 grid grid-cols-3 gap-4 relative z-10">
+                    <div className="glass-panel p-4 rounded-xl border border-white/10 flex items-center gap-3">
+                        <Wifi className="text-cyan-400" size={20} />
+                        <div>
+                            <div className="text-2xl font-black text-white">{stats.total}</div>
+                            <div className="text-xs text-gray-400">Active Connections</div>
+                        </div>
+                    </div>
+                    <div className="glass-panel p-4 rounded-xl border border-white/10 flex items-center gap-3">
+                        <Globe className="text-indigo-400" size={20} />
+                        <div>
+                            <div className="text-2xl font-black text-white">{stats.new_ips}</div>
+                            <div className="text-xs text-gray-400">New IPs Seen</div>
+                        </div>
+                    </div>
+                    <div className={`glass-panel p-4 rounded-xl border flex items-center gap-3 ${stats.risky_count > 0 ? 'border-threat-critical/30' : 'border-white/10'}`}>
+                        <Shield className={stats.risky_count > 0 ? 'text-threat-critical' : 'text-threat-clean'} size={20} />
+                        <div>
+                            <div className={`text-2xl font-black ${stats.risky_count > 0 ? 'text-threat-critical' : 'text-threat-clean'}`}>{stats.risky_count}</div>
+                            <div className="text-xs text-gray-400">Risky Connections</div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* MitM Alert Banner */}
             {mitmAlert && (
                 <div className="mb-8 -mt-2 animate-in slide-in-from-top-4 fade-in duration-500">
@@ -158,7 +226,6 @@ const NetworkAnalysis = () => {
                         <div className="absolute -right-10 -top-10 opacity-10">
                             <AlertTriangle size={150} className="text-threat-critical" />
                         </div>
-
                         <div className="relative z-10 flex items-start gap-4">
                             <div className="bg-threat-critical/20 p-3 rounded-xl shrink-0 border border-threat-critical/30">
                                 <AlertTriangle className="h-8 w-8 text-threat-critical animate-pulse" />
@@ -171,7 +238,6 @@ const NetworkAnalysis = () => {
                                     </span>
                                 </h3>
                                 <p className="text-gray-300 text-lg mb-4">{mitmAlert.description}</p>
-
                                 <div className="bg-dark-900/60 p-4 rounded-xl border border-threat-critical/20 font-mono text-sm inline-block">
                                     <div className="text-gray-400 mb-1">Conflicting Hardware Address:</div>
                                     <div className="text-threat-critical font-bold text-lg">{mitmAlert.mac.toUpperCase()}</div>
@@ -190,17 +256,46 @@ const NetworkAnalysis = () => {
                 </div>
             )}
 
+            {/* Beaconing Alerts */}
+            {beaconingAlerts.length > 0 && (
+                <div className="mb-6 space-y-3 relative z-10">
+                    {beaconingAlerts.map((alert, idx) => (
+                        <div key={idx} className="bg-gradient-to-r from-threat-high/10 to-amber-900/20 border border-threat-high/40 rounded-xl p-4 flex items-center gap-4">
+                            <Cpu className="text-threat-high animate-pulse shrink-0" size={24} />
+                            <div className="flex-1">
+                                <span className="font-bold text-threat-high">C2 Beaconing Detected:</span>
+                                <span className="text-gray-300 ml-2">{alert.description}</span>
+                            </div>
+                            <span className="px-3 py-1 bg-threat-high/20 text-threat-high text-xs font-bold rounded-full border border-threat-high/30">
+                                {alert.severity}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
                 {/* Connections Feed */}
                 <div className="glass-panel p-6 rounded-2xl border border-white/10 shadow-2xl flex flex-col h-[700px]">
                     <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
                         <div className="flex items-center gap-2">
                             <Wifi className="text-cyan-400" size={20} />
-                            <h2 className="text-xl font-bold text-white">Active Connections Feed</h2>
+                            <h2 className="text-xl font-bold text-white">Enriched Connection Feed</h2>
                         </div>
-                        <span className="bg-dark-900 border border-gray-700 px-3 py-1 rounded-full text-xs font-mono text-gray-300">
-                            {connections.length} ACTIVE
-                        </span>
+                        <div className="flex items-center gap-2">
+                            {/* Filter buttons */}
+                            <div className="flex bg-dark-900 rounded-lg border border-gray-700 p-0.5">
+                                {['all', 'risky', 'external'].map(f => (
+                                    <button key={f} onClick={() => setFilter(f)}
+                                        className={`px-2 py-1 rounded text-xs font-bold transition-all ${filter === f ? 'bg-indigo-500/30 text-indigo-300' : 'text-gray-500 hover:text-gray-300'}`}>
+                                        {f.charAt(0).toUpperCase() + f.slice(1)}
+                                    </button>
+                                ))}
+                            </div>
+                            <span className="bg-dark-900 border border-gray-700 px-3 py-1 rounded-full text-xs font-mono text-gray-300">
+                                {filteredConnections.length} SHOWN
+                            </span>
+                        </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
@@ -210,16 +305,34 @@ const NetworkAnalysis = () => {
                                 <p>Monitoring is offline. Press Start to capture.</p>
                             </div>
                         ) : (
-                            connections.map((conn, idx) => (
-                                <div key={idx} className="bg-dark-900/50 border border-gray-800 p-3 rounded-lg flex flex-col text-sm font-mono hover:border-gray-600 transition-colors">
+                            filteredConnections.map((conn, idx) => (
+                                <div key={idx} className={`bg-dark-900/50 border p-3 rounded-lg flex flex-col text-sm font-mono hover:border-gray-500 transition-colors ${conn.risk_score >= 50 ? 'border-threat-critical/30' : conn.risk_score >= 30 ? 'border-threat-high/30' : 'border-gray-800'}`}>
                                     <div className="flex justify-between items-center mb-2">
-                                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${conn.status === 'LISTEN' ? 'bg-indigo-500/20 text-indigo-400' : 'bg-green-500/20 text-green-400'
-                                            }`}>
-                                            {conn.status}
-                                        </span>
-                                        <span className="text-gray-500 text-xs">PID: {conn.pid} • {conn.type}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${conn.status === 'LISTEN' ? 'bg-indigo-500/20 text-indigo-400' : 'bg-green-500/20 text-green-400'}`}>
+                                                {conn.status}
+                                            </span>
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold border ${getRiskColor(conn.risk_score)}`}>
+                                                RISK: {conn.risk_score}
+                                            </span>
+                                            {conn.ip_reputation && conn.ip_reputation !== 'unknown' && (
+                                                <span className={`px-2 py-0.5 rounded text-xs font-bold border ${getReputationBadge(conn.ip_reputation)}`}>
+                                                    {conn.ip_reputation.toUpperCase()}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2 text-gray-500 text-xs">
+                                            {conn.geo_country && <span className="text-gray-400">🌐 {conn.geo_country}</span>}
+                                            <span>{conn.port_class !== 'normal' && conn.port_class !== 'ephemeral' ? `⚠️ ${conn.port_class}` : ''}</span>
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2 text-gray-300">
+                                    <div className="grid grid-cols-3 gap-2 text-gray-300">
+                                        <div>
+                                            <span className="text-gray-500 text-xs block mb-0.5">PROCESS</span>
+                                            <span className="text-gray-200 truncate block" title={conn.process_path || conn.process_name}>
+                                                {conn.process_name || 'unknown'}
+                                            </span>
+                                        </div>
                                         <div>
                                             <span className="text-gray-500 text-xs block mb-0.5">LOCAL</span>
                                             {conn.local_address || 'N/A'}
@@ -229,6 +342,15 @@ const NetworkAnalysis = () => {
                                             {conn.remote_address || 'N/A'}
                                         </div>
                                     </div>
+                                    {conn.risk_reasons && conn.risk_reasons.length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-1">
+                                            {conn.risk_reasons.map((reason, i) => (
+                                                <span key={i} className="text-xs bg-threat-critical/10 text-threat-high px-2 py-0.5 rounded border border-threat-high/20">
+                                                    {reason}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             ))
                         )}
@@ -239,7 +361,7 @@ const NetworkAnalysis = () => {
                 <div className="glass-panel p-6 rounded-2xl border border-white/10 shadow-2xl flex flex-col h-[700px] bg-gradient-to-b from-dark-800 to-indigo-900/10">
                     <div className="flex items-center gap-2 mb-4 border-b border-gray-700 pb-3 shrink-0">
                         <Server className="text-indigo-400" size={20} />
-                        <h2 className="text-xl font-bold text-white">Live AI Analyst Log</h2>
+                        <h2 className="text-xl font-bold text-white">Live AI Threat Analyst</h2>
                     </div>
 
                     <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
@@ -255,12 +377,10 @@ const NetworkAnalysis = () => {
                                         <div className="flex items-center gap-2 mb-1">
                                             <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
                                             <span className="text-xs font-mono text-indigo-400">{log.time}</span>
-                                            <span className="text-xs font-bold text-gray-500 uppercase">SYSTEM UPDATE</span>
+                                            <span className="text-xs font-bold text-gray-500 uppercase">THREAT INTEL UPDATE</span>
                                         </div>
-                                        <div className="bg-black/40 border border-indigo-500/20 p-4 rounded-xl rounded-tl-none prose prose-sm prose-invert prose-indigo max-w-none shadow-inner">
-                                            {log.text.split('\n').map((line, i) => (
-                                                <p key={i} className="mb-1 text-gray-300 leading-relaxed">{line}</p>
-                                            ))}
+                                        <div className="bg-black/40 border border-indigo-500/20 p-4 rounded-xl rounded-tl-none shadow-inner">
+                                            <MarkdownRenderer content={log.text} />
                                         </div>
                                     </div>
                                 ))}
@@ -268,7 +388,7 @@ const NetworkAnalysis = () => {
                                 {isMonitoring && (
                                     <div className="flex items-center gap-3 text-indigo-400/70 p-4">
                                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-400"></div>
-                                        <span className="text-sm font-medium animate-pulse">Analyzing network stream...</span>
+                                        <span className="text-sm font-medium animate-pulse">Analyzing enriched network stream...</span>
                                     </div>
                                 )}
                                 <div ref={analysisEndRef} />

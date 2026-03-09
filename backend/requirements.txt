@@ -10,6 +10,7 @@ python-decouple
 celery
 redis
 channels
+channels-redis==4.2.0
 daphne
 watchdog
 
@@ -18,21 +19,26 @@ djangorestframework-simplejwt
 
 # AI & ML
 langchain
-langchain-google-genai
-google-generativeai
-scikit-learn
-xgboost
+langchain-groq
+scikit-learn==1.8.0
 pefile
 yara-python
 virustotal3
 
-# PDF
-WeasyPrint
+# Hashing
+blake3
 
-scikit-learn==1.8.0
+# File Type Detection
+python-magic-bin
 
-
-pandas==3.0.1
-
+# Network Analysis
 psutil==5.9.8
-channels-redis==4.2.0
+geoip2
+aiohttp
+
+# Data
+pandas==3.0.1
+numpy
+
+# PDF
+xhtml2pdf

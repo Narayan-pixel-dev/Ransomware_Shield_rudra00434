@@ -1,36 +1,82 @@
-from virustotal3.core import Files
-from django.conf import settings
+import virustotal3.core
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
-def check_file_hash(file_hash):
+# Simple in-memory cache to avoid redundant lookups
+_vt_cache = {}
+_CACHE_TTL = 86400  # 24 hours
+
+
+def check_file_hash(sha256_hash, api_key=None):
     """
-    Checks the given file hash (SHA256, MD5, etc.) against VirusTotal's database.
+    Query VirusTotal for a file hash (SHA-256 only).
+    
+    Returns:
+        dict with keys: status, malicious, suspicious, undetected, total, 
+                        link, scan_date, or error
     """
-    vt_api_key = getattr(settings, 'VT_API_KEY', None)
-    if not vt_api_key:
-        logger.warning("VT_API_KEY not set. Skipping VirusTotal check.")
-        return {'status': 'skipped', 'message': 'API key not configured'}
+    if not sha256_hash or len(sha256_hash) != 64:
+        return {
+            'status': 'skipped',
+            'error': 'Invalid or missing SHA-256 hash.',
+        }
+    
+    # Check cache first
+    cached = _vt_cache.get(sha256_hash)
+    if cached and (time.time() - cached.get('_cached_at', 0)) < _CACHE_TTL:
+        return cached
+    
+    if not api_key:
+        from django.conf import settings
+        api_key = getattr(settings, 'VT_API_KEY', None)
+    
+    if not api_key:
+        return {
+            'status': 'skipped',
+            'error': 'VirusTotal API key not configured.',
+        }
 
     try:
-        vt_files = Files(vt_api_key)
-        report = vt_files.info_file(file_hash)
+        vt = virustotal3.core.Files(api_key)
+        report = vt.info_file(sha256_hash)
         
-        # Extract relevant info from the massive VT response
-        attributes = report.get('data', {}).get('attributes', {})
-        stats = attributes.get('last_analysis_stats', {})
-        results = attributes.get('last_analysis_results', {})
+        if not isinstance(report, dict):
+            return {'status': 'error', 'error': 'Unexpected response format from VirusTotal.'}
         
-        return {
+        stats = report.get('data', {}).get('attributes', {}).get('last_analysis_stats', {})
+        
+        result = {
             'status': 'success',
             'malicious': stats.get('malicious', 0),
             'suspicious': stats.get('suspicious', 0),
             'undetected': stats.get('undetected', 0),
-            'total': sum(stats.values()),
-            'engines_detected': [engine for engine, details in results.items() if details.get('category') in ('malicious', 'suspicious')]
+            'total': sum(stats.values()) if stats else 0,
+            'link': f"https://www.virustotal.com/gui/file/{sha256_hash}",
+            'scan_date': report.get('data', {}).get('attributes', {}).get('last_analysis_date', ''),
+            '_cached_at': time.time(),
         }
         
+        # Cache the result
+        _vt_cache[sha256_hash] = result
+        logger.info(f"VT lookup for {sha256_hash[:16]}...: {result['malicious']}/{result['total']} detections")
+        
+        return result
+        
     except Exception as e:
-        logger.error(f"VirusTotal API Error: {e}")
-        return {'status': 'error', 'message': str(e)}
+        error_str = str(e)
+        
+        # Handle "not found" gracefully (hash not in VT database)
+        if 'Not Found' in error_str or '404' in error_str:
+            return {
+                'status': 'not_found',
+                'error': 'File hash not found in VirusTotal database.',
+                'link': f"https://www.virustotal.com/gui/file/{sha256_hash}",
+            }
+        
+        logger.error(f"VirusTotal API error: {e}")
+        return {
+            'status': 'error',
+            'error': f'VirusTotal API error: {error_str}',
+        }
