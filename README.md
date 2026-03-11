@@ -272,6 +272,245 @@ Feature importance is dominated by: entropy, suspicious import count, ransomware
 
 ---
 
+## API Documentation
+
+All endpoints are served under the `/api/` prefix. JWT tokens are used for authenticated routes.
+
+### Authentication
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/auth/register/` | Public | Register a new user account |
+| `POST` | `/api/auth/login/` | Public | Login & receive JWT access + refresh tokens |
+| `POST` | `/api/auth/token/refresh/` | Public | Refresh an expired access token |
+
+<details>
+<summary><b>Register — Request & Response</b></summary>
+
+```json
+// POST /api/auth/register/
+// Request Body
+{
+  "email": "user@example.com",
+  "password": "securepassword123",
+  "subscription_tier": "FREE"  // Optional, defaults to FREE
+}
+
+// Response — 201 Created
+{
+  "id": 1,
+  "email": "user@example.com",
+  "subscription_tier": "FREE"
+}
+```
+</details>
+
+<details>
+<summary><b>Login — Request & Response</b></summary>
+
+```json
+// POST /api/auth/login/
+// Request Body
+{
+  "email": "user@example.com",
+  "password": "securepassword123"
+}
+
+// Response — 200 OK
+{
+  "access": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+</details>
+
+---
+
+### Scanner Engine
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/scanner/upload/` | Public | Upload a file for multi-engine scanning |
+| `GET` | `/api/scanner/jobs/<id>/` | Public | Poll scan job status and results |
+
+<details>
+<summary><b>Upload File — Request & Response</b></summary>
+
+```bash
+# POST /api/scanner/upload/
+# Content-Type: multipart/form-data
+
+curl -X POST http://localhost:8000/api/scanner/upload/ \
+  -F "file=@suspicious_file.exe"
+```
+```json
+// Response — 201 Created (new scan) or 200 OK (cached result)
+{
+  "id": 42,
+  "file_name": "suspicious_file.exe",
+  "file_hash": "a1b2c3d4...",       // BLAKE3 hash
+  "sha256_hash": "e5f6g7h8...",
+  "file_size": 204800,
+  "status": "PENDING",               // PENDING → PROCESSING → COMPLETED / FAILED
+  "created_at": "2026-03-12T00:00:00Z"
+}
+```
+</details>
+
+<details>
+<summary><b>Scan Status — Response</b></summary>
+
+```json
+// GET /api/scanner/jobs/42/
+// Response — 200 OK (when completed)
+{
+  "id": 42,
+  "status": "COMPLETED",
+  "file_name": "suspicious_file.exe",
+  "result": {
+    "threat_level": "HIGH",          // CLEAN | LOW | MEDIUM | HIGH | CRITICAL
+    "detection_count": 3,
+    "engine_results": {
+      "static_analysis": { ... },
+      "yara_matches": [ ... ],
+      "ml_prediction": { ... },
+      "virustotal": { ... }
+    }
+  }
+}
+```
+</details>
+
+---
+
+### AI Engine
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/ai/chat/` | Public | Chat with the AI security analyst |
+| `POST` | `/api/ai/network-analysis/` | Public | Submit network data for AI threat analysis |
+
+<details>
+<summary><b>AI Chat — Request & Response</b></summary>
+
+```json
+// POST /api/ai/chat/
+// Request Body
+{
+  "message": "What is a ransomware C2 callback?"
+}
+
+// Response — 200 OK
+{
+  "reply": "A Command & Control (C2) callback is when ransomware...",
+  "suggestions": [
+    "What is ransomware?",
+    "How to secure an active directory?",
+    "Explain file entropy."
+  ]
+}
+```
+</details>
+
+<details>
+<summary><b>Network Analysis — Request & Response</b></summary>
+
+```json
+// POST /api/ai/network-analysis/
+// Request Body
+{
+  "data": "192.168.1.5:443 → 45.33.32.156:8443 | Process: svchost.exe | Risk: 78"
+}
+
+// Response — 200 OK
+{
+  "analysis": "## Security Analysis\n\nThe connection to port 8443 from svchost.exe is suspicious..."
+}
+```
+</details>
+
+---
+
+### Dashboard
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/dashboard/stats/` | Public | Fetch KPIs, recent detections, and 7-day timeline |
+
+<details>
+<summary><b>Dashboard Stats — Response</b></summary>
+
+```json
+// GET /api/dashboard/stats/
+// Response — 200 OK
+{
+  "kpi": {
+    "total_scans_7d": 156,
+    "scan_change_pct": 23.5,
+    "critical_threats": 3,
+    "suspicious_files": 12,
+    "clean_files": 141,
+    "clear_rate": 90.4
+  },
+  "recent_detections": [
+    {
+      "id": 42,
+      "file_name": "payload.exe",
+      "threat_level": "CRITICAL",
+      "created_at": "2026-03-11T18:30:00Z"
+    }
+  ],
+  "timeline": [
+    { "name": "Mon", "Critical": 1, "High": 2, "Medium": 3, "Low": 1, "Clean": 20 },
+    { "name": "Tue", "Critical": 0, "High": 1, "Medium": 2, "Low": 0, "Clean": 18 }
+  ]
+}
+```
+</details>
+
+---
+
+### Reports
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/reports/download/<result_id>/` | Public | Download a PDF threat report for a completed scan |
+
+> Returns `application/pdf` with `Content-Disposition: attachment` header.
+
+---
+
+### WebSocket Channels
+
+Real-time features use Django Channels over WebSocket connections.
+
+| Protocol | Endpoint | Description |
+|----------|----------|-------------|
+| `WS` | `ws/network-analysis/` | Live network connection stream with enriched threat intelligence |
+| `WS` | `ws/alerts/` | Real-time honeyfile trap alerts and MitM ARP spoofing warnings |
+
+```javascript
+// Example: Connect to live alerts
+const ws = new WebSocket('ws://localhost:8000/ws/alerts/');
+ws.onmessage = (event) => {
+  const alert = JSON.parse(event.data);
+  // alert.type: "HONEYFILE_ALERT" | "ARP_SPOOF_ALERT"
+  // alert.severity: "CRITICAL" | "WARNING"
+  // alert.details: { process_name, pid, file_path, entropy, ... }
+};
+```
+
+---
+
+### Rate Limiting
+
+| Client Type | Rate Limit |
+|-------------|-----------|
+| Anonymous | 20 requests/minute |
+| Authenticated | 100 requests/minute |
+
+---
+
 ## 📄 License
 Distributed under the MIT License. See `LICENSE` for more information.
 
